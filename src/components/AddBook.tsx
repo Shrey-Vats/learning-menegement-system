@@ -1,247 +1,166 @@
-// Components/AddBook.tsx
-import React, { useContext, useEffect, useState } from 'react';
-import axios from "axios";
-// Assuming AuthContext is correctly defined elsewhere
-import { AuthContext } from '@/Context/AuthContext'; 
-
-// Import shadcn/ui components
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+// src/components/AddBook.tsx
+import React, { useState } from 'react';
+import { useLibraryStore } from '@/store/useLibraryStore';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { BookOpen, Plus } from 'lucide-react';
 
-// --- Multi-Select Imports (You need to implement this component or use a library built with shadcn/ui) ---
-// For a simple implementation, we'll use a standard Select/DropdownMenu and simulate multi-select state.
-import {
-    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem
-} from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
+const AddBook = () => {
+  const { addBook } = useLibraryStore();
+  
+  const [formData, setFormData] = useState({
+    title: '',
+    author: '',
+    category: '',
+    price: '',
+    coverUrl: '',
+  });
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-interface CategoryOption {
-    value: string; // The _id
-    text: string;  // The categoryName
-}
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.title || !formData.author || !formData.category || !formData.price) {
+      setMessage({ type: 'error', text: 'Please fill all required fields' });
+      return;
+    }
 
-interface RecentBook {
-    _id: string;
-    bookName: string;
-    createdAt: string;
-}
+    const price = parseFloat(formData.price);
+    if (isNaN(price) || price <= 0) {
+      setMessage({ type: 'error', text: 'Please enter a valid price' });
+      return;
+    }
 
-function AddBook() {
-    const API_URL = process.env.REACT_APP_API_URL;
-    const [isLoading, setIsLoading] = useState(false);
-    // Assuming user context is typed
-    const { user } = useContext(AuthContext) as any; 
+    addBook({
+      title: formData.title,
+      author: formData.author,
+      category: formData.category,
+      price: price,
+      coverUrl: formData.coverUrl || 'https://via.placeholder.com/300x400?text=No+Cover',
+      totalCopies: 3, // Fixed: 3 copies per category
+    });
 
-    const [bookName, setBookName] = useState("");
-    const [alternateTitle, setAlternateTitle] = useState("");
-    const [author, setAuthor] = useState("");
-    const [bookCountAvailable, setBookCountAvailable] = useState<number | ''>('');
-    const [language, setLanguage] = useState("");
-    const [publisher, setPublisher] = useState("");
-    const [allCategories, setAllCategories] = useState<CategoryOption[]>([]);
-    const [selectedCategories, setSelectedCategories] = useState<string[]>([]); // Array of category _ids
-    const [recentAddedBooks, setRecentAddedBooks] = useState<RecentBook[]>([]);
+    setMessage({ type: 'success', text: 'Book added successfully! (3 copies added)' });
+    setFormData({ title: '', author: '', category: '', price: '', coverUrl: '' });
+    
+    setTimeout(() => setMessage(null), 3000);
+  };
 
-    /* Fetch all the Categories */
-    useEffect(() => {
-        const getAllCategories = async () => {
-            try {
-                const response = await axios.get(API_URL + "api/categories/allcategories");
-                const all_categories: CategoryOption[] = response.data.map((category: any) => ({
-                    value: category._id,
-                    text: category.categoryName
-                }));
-                setAllCategories(all_categories);
-            } catch (err) {
-                console.error("Error fetching categories:", err);
-            }
-        };
-        getAllCategories();
-    }, [API_URL]);
+  return (
+    <Card className="max-w-2xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BookOpen className="h-5 w-5" />
+          Add New Book
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {message && (
+          <Alert variant={message.type === 'error' ? 'destructive' : 'default'} className="mb-6">
+            <AlertDescription>{message.text}</AlertDescription>
+          </Alert>
+        )}
 
-    /* Adding book function */
-    const addBook = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsLoading(true);
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Title */}
+          <div className="space-y-2">
+            <Label htmlFor="title">Book Title *</Label>
+            <Input
+              id="title"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="Enter book title"
+              required
+            />
+          </div>
 
-        // Basic validation
-        if (!bookName || !author || !bookCountAvailable || selectedCategories.length === 0) {
-            alert("Please fill all required fields.");
-            setIsLoading(false);
-            return;
-        }
+          {/* Author */}
+          <div className="space-y-2">
+            <Label htmlFor="author">Author *</Label>
+            <Input
+              id="author"
+              value={formData.author}
+              onChange={(e) => setFormData({ ...formData, author: e.target.value })}
+              placeholder="Enter author name"
+              required
+            />
+          </div>
 
-        const BookData = {
-            bookName,
-            alternateTitle,
-            author,
-            bookCountAvailable: Number(bookCountAvailable),
-            language,
-            publisher,
-            categories: selectedCategories,
-            isAdmin: user?.isAdmin || true // Assuming admin status
-        };
-        
-        try {
-            const response = await axios.post(API_URL + "api/books/addbook", BookData);
-            
-            // Update recent books (keeping only the top 5)
-            setRecentAddedBooks(prev => [response.data, ...prev.slice(0, 4)]);
-            
-            // Clear form
-            setBookName("");
-            setAlternateTitle("");
-            setAuthor("");
-            setBookCountAvailable('');
-            setLanguage("");
-            setPublisher("");
-            setSelectedCategories([]);
-            alert("Book Added Successfully 🎉");
-        } catch (err) {
-            console.error("Error adding book:", err);
-            alert("Failed to add book.");
-        }
-        setIsLoading(false);
-    };
+          {/* Category */}
+          <div className="space-y-2">
+            <Label htmlFor="category">Category *</Label>
+            <Input
+              id="category"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              placeholder="e.g., Fiction, Science, Biography"
+              required
+            />
+          </div>
 
-    // Toggle category selection
-    const toggleCategory = (categoryId: string) => {
-        setSelectedCategories(prev =>
-            prev.includes(categoryId)
-                ? prev.filter(id => id !== categoryId)
-                : [...prev, categoryId]
-        );
-    };
+          {/* Price */}
+          <div className="space-y-2">
+            <Label htmlFor="price">Price (₹) *</Label>
+            <Input
+              id="price"
+              type="number"
+              step="0.01"
+              value={formData.price}
+              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+              placeholder="Enter book price"
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Used for calculating fines (200% for missing, 10% for small damage, 50% for large damage)
+            </p>
+          </div>
 
-    /* Fetch initial recent books */
-    useEffect(() => {
-        const getallBooks = async () => {
-            try {
-                const response = await axios.get(API_URL + "api/books/allbooks");
-                setRecentAddedBooks(response.data.slice(0, 5));
-            } catch (err) {
-                console.error("Error fetching recent books:", err);
-            }
-        };
-        getallBooks();
-    }, [API_URL]);
+          {/* Cover URL */}
+          <div className="space-y-2">
+            <Label htmlFor="coverUrl">Cover Image URL (Optional)</Label>
+            <Input
+              id="coverUrl"
+              type="url"
+              value={formData.coverUrl}
+              onChange={(e) => setFormData({ ...formData, coverUrl: e.target.value })}
+              placeholder="https://example.com/cover.jpg"
+            />
+            {formData.coverUrl && (
+              <div className="mt-2 border rounded-lg overflow-hidden w-32">
+                <img
+                  src={formData.coverUrl}
+                  alt="Preview"
+                  className="w-full h-48 object-cover"
+                  onError={(e) => {
+                    e.currentTarget.src = 'https://via.placeholder.com/300x400?text=Invalid+Image';
+                  }}
+                />
+              </div>
+            )}
+          </div>
 
+          {/* Info Box */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-900 font-medium mb-2">System Rules:</p>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• 3 copies will be automatically added for each book</li>
+              <li>• Each person/group can borrow only 1 book at a time</li>
+              <li>• Individual borrowing: 30 days limit</li>
+              <li>• Group borrowing (3-6 members): 180 days limit</li>
+            </ul>
+          </div>
 
-    return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <Card className="lg:col-span-2 shadow-none border-none">
-                <CardHeader>
-                    <CardTitle className="text-2xl font-bold">Add New Book</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <form className='space-y-4' onSubmit={addBook}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <Label htmlFor="bookName">Book Name <span className="text-red-500">*</span></Label>
-                                <Input id="bookName" type="text" value={bookName} onChange={(e) => setBookName(e.target.value)} required />
-                            </div>
-
-                            <div>
-                                <Label htmlFor="alternateTitle">Alternate Title</Label>
-                                <Input id="alternateTitle" type="text" value={alternateTitle} onChange={(e) => setAlternateTitle(e.target.value)} />
-                            </div>
-
-                            <div>
-                                <Label htmlFor="author">Author Name <span className="text-red-500">*</span></Label>
-                                <Input id="author" type="text" value={author} onChange={(e) => setAuthor(e.target.value)} required />
-                            </div>
-
-                            <div>
-                                <Label htmlFor="language">Language</Label>
-                                <Input id="language" type="text" value={language} onChange={(e) => setLanguage(e.target.value)} />
-                            </div>
-
-                            <div>
-                                <Label htmlFor="publisher">Publisher</Label>
-                                <Input id="publisher" type="text" value={publisher} onChange={(e) => setPublisher(e.target.value)} />
-                            </div>
-
-                            <div>
-                                <Label htmlFor="copies">No. of Copies Available <span className="text-red-500">*</span></Label>
-                                <Input id="copies" type="number" value={bookCountAvailable} onChange={(e) => setBookCountAvailable(e.target.value === '' ? '' : Number(e.target.value))} required />
-                            </div>
-                        </div>
-
-                        {/* Categories Dropdown */}
-                        <div className="space-y-2">
-                            <Label htmlFor="categories">Categories <span className="text-red-500">*</span></Label>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-between">
-                                        {selectedCategories.length > 0
-                                            ? `${selectedCategories.length} selected`
-                                            : "Select Categories"}
-                                        <ChevronDown className="ml-2 h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent className="w-72">
-                                    {allCategories.map((category) => (
-                                        <DropdownMenuCheckboxItem
-                                            key={category.value}
-                                            checked={selectedCategories.includes(category.value)}
-                                            onCheckedChange={() => toggleCategory(category.value)}
-                                        >
-                                            {category.text}
-                                        </DropdownMenuCheckboxItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            {selectedCategories.length > 0 && (
-                                <div className="flex flex-wrap gap-2 pt-2">
-                                    {selectedCategories.map(id => {
-                                        const category = allCategories.find(c => c.value === id);
-                                        return category ? <Badge key={id} variant="secondary">{category.text}</Badge> : null;
-                                    })}
-                                </div>
-                            )}
-                        </div>
-
-                        <Button className="w-full mt-6" type="submit" disabled={isLoading}>
-                            {isLoading ? "Submitting..." : "Add Book"}
-                        </Button>
-                    </form>
-                </CardContent>
-            </Card>
-
-            {/* Recently Added Books */}
-            <Card className="lg:col-span-1 shadow-none border-none">
-                <CardHeader>
-                    <CardTitle className="text-2xl font-bold">Recently Added</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[50px]">S.No</TableHead>
-                                <TableHead>Book Name</TableHead>
-                                <TableHead className="text-right">Date</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {recentAddedBooks.map((book, index) => (
-                                <TableRow key={book._id}>
-                                    <TableCell className="font-medium">{index + 1}</TableCell>
-                                    <TableCell>{book.bookName}</TableCell>
-                                    <TableCell className="text-right">{book.createdAt.substring(0, 10)}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                        <TableCaption>{recentAddedBooks.length === 0 ? "No recent books added." : "Top 5 recently added books."}</TableCaption>
-                    </Table>
-                </CardContent>
-            </Card>
-        </div>
-    );
-}
+          <Button type="submit" className="w-full" size="lg">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Book (3 Copies)
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default AddBook;

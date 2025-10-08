@@ -1,4 +1,5 @@
 // AllBooks.tsx
+"use client"
 import React, { useState } from "react";
 import BookCard, { Book } from "@/components/Book" // Import the component and the Book interface
 
